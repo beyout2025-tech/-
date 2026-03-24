@@ -144,7 +144,7 @@ if($text and $user_data['mode'] == "sR") {
     return false ;
 } 
 
-$not = array("$admin", "6006432889");
+$not = array("$admin", "7607952642");
 if ($user_data['status'] == 'banned' && !in_array($from_id, $not)) {
     bot("deleteMessage", ["chat_id" => $chat_id, "message_id" => $user_data['m_id']]);
     $n = bot("sendMessage", [
@@ -271,7 +271,7 @@ if( $text == "/help") {
 }
 
 // --- [ نظام الرفع والفحص (PHP & ZIP) ] ---
-$domin = "dev-hostbot.pantheonsite.io";
+$domin = "bjbpip0esg.onrender.com";
 if($update->message->document){
     $doc = $update->message->document;
     $ext = pathinfo($doc->file_name, PATHINFO_EXTENSION);
