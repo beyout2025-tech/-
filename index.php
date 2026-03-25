@@ -2,7 +2,7 @@
 error_reporting(0);
 
 $token = "8571489537:AAHjdZv5ikLonsmhmdMB4uXJaCLdd5pLMo4";
-$admin = 76079526421 ;
+$admin = 7607952642 ;
 $domin = "bjbpip0esg.onrender.com"; 
 
 define('API_KEY',$token);
