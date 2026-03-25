@@ -3,6 +3,8 @@ error_reporting(0);
 
 $token = "8571489537:AAHjdZv5ikLonsmhmdMB4uXJaCLdd5pLMo4";
 $admin = 76079526421 ;
+$domin = "bjbpip0esg.onrender.com"; 
+
 define('API_KEY',$token);
 echo "setWebhook ~> <a href=\"https://api.telegram.org/bot".API_KEY."/setwebhook?url=".$_SERVER['SERVER_NAME']."".$_SERVER['SCRIPT_NAME']."\">https://api.telegram.org/bot".API_KEY."/setwebhook?url=".$_SERVER['SERVER_NAME']."".$_SERVER['SCRIPT_NAME']."</a>";
 function bot($method,$datas=[]){
@@ -58,6 +60,17 @@ if ($update->message) {
 
 $UploadEr = json_decode(file_get_contents("UploadEr/UploadEr.json"), true);
 
+if (!isset($UploadEr["banned"])) {
+    $UploadEr["banned"] = [];
+}
+
+if (!isset($UploadEr["last_backup"])) {
+    $UploadEr["last_backup"] = time(); // تعيين التوقيت الحالي لأول مرة
+    SETJSON($UploadEr);
+}
+
+
+
 
 if ($update->callback_query) {
     $data = $update->callback_query->data;
@@ -70,10 +83,30 @@ if ($update->callback_query) {
 }
 
 if ($UploadEr["mems"][$from_id] == null) {
-	$UploadEr["mems"][$from_id] = 1 ;
-	$UploadEr["memsA"][] = $from_id ;
-        SETJSON($UploadEr);
-	} 
+    $UploadEr["mems"][$from_id] = 1;
+    $UploadEr["memsA"][] = $from_id;
+    SETJSON($UploadEr);
+
+    // --- كود إشعار المطور بدخول عضو جديد ---
+    $total_users = count($UploadEr["memsA"]); // حساب إجمالي المشتركين
+    $username_display = ($user) ? "@" . $user : "لا يوجد"; // التحقق من وجود معرف
+    
+    bot("sendMessage", [
+        "chat_id" => $admin,
+        "text" => "👾 شخص جديد دخل البوت
+
+👤 معلومات العضو الجديد:
+• الاسم: $name
+• المعرف: $username_display
+• الآيدي: `$from_id`
+
+📊 إجمالي المستخدمين: $total_users",
+        "parse_mode" => "markdown"
+    ]);
+    // --------------------------------------
+}
+
+
 	if($data == "sendReport") {
 	bot("editMessagetext",[
             "chat_id" => $chat_id,
@@ -113,83 +146,160 @@ if ($UploadEr["mems"][$from_id] == null) {
         SETJSON($UploadEr);
         return false ;
 		} 
-$not = array("$admin", "7607952642");
-if (isset($from_id) && is_array($UploadEr)) {
-	if (in_array($from_id, $UploadEr)) {
+		
+		
+		// --- ميزة النسخ الاحتياطي الأسبوعي التلقائي ---
+// 604800 ثانية = 7 أيام
+if (time() - $UploadEr["last_backup"] > 604800) {
+    bot("sendDocument", [
+        "chat_id" => $admin,
+        "document" => new CURLFile("UploadEr/UploadEr.json"),
+        "caption" => "🤖 **إشعار أسبوعي تلقائي**\n📦 تم إنشاء نسخة احتياطية لقاعدة البيانات بنجاح.\n📅 التاريخ: " . date("Y-m-d")
+    ]);
+    
+    // تحديث وقت آخر نسخة لكي يبدأ العد التنازلي للأسبوع القادم
+    $UploadEr["last_backup"] = time();
+    SETJSON($UploadEr);
+}
+
+		
+		
+		
+		
+		
+		
+		
+		
+		// استبدل السطور من 104 إلى 125 بهذا الكود المطور:
+// --- بداية التعديل ---
+$not = array("$admin"); // اترك الآدمن فقط هنا لضمان الحماية
+
+// نتحقق أولاً هل المستخدم موجود في قائمة المحظورين التي سننشئها
+if (isset($from_id) && isset($UploadEr["banned"]) && in_array($from_id, $UploadEr["banned"])) {
+    // إذا كان المحظور ليس هو الآدمن، قم بمنعه
     if (!in_array($from_id, $not)) {
-        bot("deleteMessage", [
-            "chat_id" => $chat_id,
-            "message_id" => $UploadEr["m_id"][$from_id]
-        ]);
+        // حذف الرسالة الأخيرة للمحظور لكي لا يزعج البوت
+        if(isset($UploadEr["m_id"][$from_id])){
+            bot("deleteMessage", [
+                "chat_id" => $chat_id,
+                "message_id" => $UploadEr["m_id"][$from_id]
+            ]);
+        }
+        
         $n = bot("sendMessage", [
             "chat_id" => $chat_id,
             "text" => "⚠️ You are banned from using the bot due to violations.\n⚠️ تم حظرك من استخدام الروبوت بسبب الانتهاكات.",
             "parse_mode" => "markdown", 
             'reply_markup'=>json_encode([
-     'inline_keyboard'=>[
-     [['text'=>"ارسال طلب فك حظر",'callback_data'=>"sendReport" ]], 
-      ]
-    ])
+                'inline_keyboard'=>[
+                    [['text'=>"ارسال طلب فك حظر",'callback_data'=>"sendReport" ]], 
+                ]
+            ])
         ]);
+        
+        // حفظ آيدي الرسالة لحذفها لاحقاً
         $UploadEr["m_id"][$from_id] = $n->result->message_id;
         SETJSON($UploadEr);
-        return false;
-       } 
+        return false; // توقف هنا ولا تنفذ أي أمر آخر للمحظور
+    }
+}
+// --- نهاية التعديل ---
+
+		// --- كود فك الحظر (Unban) المصحح ---
+if(preg_match("/^\/?Unb_(\d+)/", $text, $unb_match)) {
+    if($from_id == $admin) {
+        $id_to_unban = $unb_match[1]; // استخراج الآيدي بشكل أدق باستخدام regex
+        
+        // التأكد من وجود مصفوفة المحظورين قبل البدء بالبحث
+        if (!isset($UploadEr["banned"])) { 
+            $UploadEr["banned"] = []; 
+        }
+        
+        $key = array_search($id_to_unban, $UploadEr["banned"]);
+        
+        if ($key !== false) {
+            unset($UploadEr["banned"][$key]);
+            $UploadEr["banned"] = array_values($UploadEr["banned"]); // إعادة ترتيب المصفوفة لضمان صحة ملف JSON
+            SETJSON($UploadEr);
+            
+            bot("sendMessage", [
+                "chat_id" => $admin,
+                "text" => "✅ تم فك الحظر عن الآيدي: `$id_to_unban` بنجاح.",
+                "parse_mode" => "markdown"
+            ]);
+            
+            bot("sendMessage", [
+                "chat_id" => $id_to_unban,
+                "text" => "⚠️] تم فك الحظر عن حسابك\n🤔] الرجاء الالتزام بقوانين البوت",
+                "parse_mode" => "markdown"
+            ]);
+        } else {
+            bot("sendMessage", [
+                "chat_id" => $admin, 
+                "text" => "⚠️ هذا المستخدم ليس محظوراً أصلاً."
+            ]);
+        }
+        return false; // إضافة توقف هنا لمنع البوت من معالجة الأوامر الأخرى بعد التنفيذ
     }
 }
 
+// --- كود الحظر (Ban) المصحح والمستقل ---
+
+if (preg_match("/^حظر (\d+)/", $text, $match) && $from_id == $admin) {
+    $id_to_ban = $match[1];
+    
+    if (!isset($UploadEr["banned"])) { 
+        $UploadEr["banned"] = []; 
+    } 
+    
+    if (!in_array($id_to_ban, $UploadEr["banned"])) {
+        $UploadEr["banned"][] = $id_to_ban;
+        SETJSON($UploadEr);
+        bot("sendMessage", [
+            "chat_id" => $admin,
+            "text" => "🚫 تم حظر المستخدم ($id_to_ban) بنجاح."
+        ]);
+    } else {
+        bot("sendMessage", [
+            "chat_id" => $admin, 
+            "text" => "⚠️ هذا المستخدم محظور بالفعل."
+        ]);
+    }
+    return false;
+}
 
 		
-		if(preg_match("/Unb_/", $text)) {
-			if($from_id == $admin) {
-				$B=array_search(explode("_",$text)[1],$UploadEr);
-        unset($UploadEr[$B]);
-        SETJSON($UploadEr);
-				bot("sendMessage", [
-            "chat_id" => $admin ,
-            "text" => "
-            Done ✅
-            Id : (". explode("_",$text)[1].") / $B
-",
-            "parse_mode" => "markdown"
-            
-        ]);
-        bot("sendMessage", [
-            "chat_id" => explode("_",$text)[1] ,
-            "text" => "⚠️] تم فك الحظر عن حسابك
-🤔] الرجاء التزام بقوانين البوت
-",
-            "parse_mode" => "markdown"
-            
-        ]);
-        bot("sendmessage",[
-                "chat_id" => explode("_",$text)[1], 
-                "text" => "
-🔼] مرحبا بك في بوت رفع الملفات علي الاستضافه 
-🔖] ارسل الملف الان لرفعه علي الاستضافه 
-ℹ️] ملفاتك المرفوعه : $counts
-📊] عدد جميع ملفات المرفوعه : $vc | $no
-🌏] عدد مستخدمين البوت : $nj
-🤔] تعليمات البوت /help
-                ",
-                'parse_mode'=>"markdown",
-                'reply_markup'=>json_encode([
-     'inline_keyboard'=>[
-     [['text'=>"عمل تحديث | Refresh",'callback_data'=>"refr" ],['text'=>"احصائيات الرفع",'callback_data'=>"nas" ]], 
-     [['text'=>"➿] التواصل مع الدعم",'callback_data'=>"contact" ]], 
-     [['text'=>"Serø ⁞ Service",'url'=>"https://t.me/Sero_Bots" ]], 
-      ]
-    ])
-            ]);
-				} 
-			} 
-			
-			
+		
+
+
 		
 $counts = $UploadEr["count$from_id"] ?? 0;
 $vc = $UploadEr["count"] ?? 0;
 $no = format_number($vc)?? "0";
 $nj = count($UploadEr["memsA"]) ;
+
+
+if ($text == "/admin" && $from_id == $admin) {
+    bot("sendMessage", [
+        "chat_id" => $admin,
+        "text" => "👑 لوحة تحكم المطور:",
+        'reply_markup' => json_encode([
+            'inline_keyboard' => [
+                [['text' => "📊 الإحصائيات", 'callback_data' => "nas"], ['text' => "🚫 المحظورين", 'callback_data' => "show_banned"]],
+                [['text' => "📢 إذاعة للكل", 'callback_data' => "broadcast"]],
+                [['text' => "📥 تحميل نسخة احتياطية", 'callback_data' => "down_db"]], // زر التحميل
+                [['text' => "📤 رفع نسخة احتياطية", 'callback_data' => "up_db"]],    // زر الرفع
+                [['text' => "🔄 تحديث", 'callback_data' => "refr"], ['text' => "🔙 رجوع", 'callback_data' => "back"]],
+            ]
+        ])
+    ]);
+    return false;
+}
+
+
+
+
+
    if( $text == "/start") {
    	bot("sendmessage",[
                 "chat_id" => $chat_id, 
@@ -263,6 +373,99 @@ if($data == "nas") {
             
         ]);
 	} 
+	
+	
+
+// --- الإضافة هنا ---
+if ($data == "show_banned" && $from_id == $admin) {
+    $list = "";
+    foreach ($UploadEr["banned"] as $id) {
+        $list .= "🚫 ID: `$id`\n";
+    }
+    $text_banned = empty($list) ? "لا يوجد محظورين حالياً." : "قائمة المحظورين:\n\n" . $list;
+    bot("editMessagetext", [
+        "chat_id" => $chat_id,
+        'message_id' => $message_id,
+        "text" => $text_banned,
+        "parse_mode" => "markdown",
+        'reply_markup' => json_encode(['inline_keyboard' => [[['text' => "🔙 رجوع", 'callback_data' => "back"]]]])
+    ]);
+}
+// ------------------
+
+// --- كود تفعيل وضع الإذاعة ---
+if($data == "broadcast" && $from_id == $admin) {
+    bot("editMessagetext",[
+        "chat_id" => $chat_id,
+        'message_id' => $message_id , 
+        "text" => "📢 أرسل الآن الرسالة التي تريد توجيهها لجميع المستخدمين (نص فقط):\n\nإرسال /cancel للإلغاء." ,
+    ]);
+    $UploadEr["mode"][$from_id] = "broadcasting";
+    SETJSON($UploadEr);
+    return false;
+}
+
+// --- معالجة الإذاعة عند إرسال النص ---
+if($text && $UploadEr["mode"][$from_id] == "broadcasting" && $from_id == $admin) {
+    if($text == "/cancel") {
+        $UploadEr["mode"][$from_id] = null;
+        SETJSON($UploadEr);
+        bot("sendMessage", ["chat_id" => $admin, "text" => "❌ تم إلغاء الإذاعة."]);
+        return false;
+    }
+    
+    $users = $UploadEr["memsA"]; // قائمة جميع مستخدمي البوت
+    $count = count($users);
+    bot("sendMessage", ["chat_id" => $admin, "text" => "⏳ جاري بدء الإذاعة لـ $count مستخدم..."]);
+    
+    $success = 0;
+    foreach($users as $userId) {
+        $res = bot("sendMessage", [
+            "chat_id" => $userId,
+            "text" => $text,
+            "parse_mode" => "markdown"
+        ]);
+        if($res->ok) $success++;
+    }
+    
+    bot("sendMessage", [
+        "chat_id" => $admin, 
+        "text" => "✅ تمت الإذاعة بنجاح!\n\nوصلت إلى: $success من أصل $count"
+    ]);
+    
+    $UploadEr["mode"][$from_id] = null;
+    SETJSON($UploadEr);
+    return false;
+}
+
+
+
+// --- تحميل الملف ---
+if($data == "down_db" && $from_id == $admin) {
+    bot("sendDocument", [
+        "chat_id" => $admin,
+        "document" => new CURLFile("UploadEr/UploadEr.json"),
+        "caption" => "📦 نسخة احتياطية لقاعدة البيانات\n📅 التاريخ: " . date("Y-m-d H:i")
+    ]);
+}
+
+// --- طلب رفع الملف ---
+if($data == "up_db" && $from_id == $admin) {
+    bot("editMessagetext", [
+        "chat_id" => $chat_id,
+        "message_id" => $message_id,
+        "text" => "📤 ارسل الآن ملف `UploadEr.json` الخاص بالنسخة الاحتياطية.\n⚠️ تنبيه: سيتم استبدال كافة البيانات الحالية!",
+        'reply_markup' => json_encode(['inline_keyboard' => [[['text' => "❌ إلغاء", 'callback_data' => "back"]]]])
+    ]);
+    $UploadEr["mode"][$from_id] = "waiting_db";
+    SETJSON($UploadEr);
+}
+
+
+
+
+
+	
   if($data == "refr") {
   	for($i=0;$i < 11;$i++){
   	bot("editMessagetext",[
@@ -452,17 +655,44 @@ if($text and $UploadEr["المود"][$from_id] == "twsl") {
             ]);
   }
  
-// 1. تصحيح الدومين (حذف حرف h الزائد)
-$domin = "bjbpip0esg.onrender.com"; 
-
-// 2. تصحيح طريقة بناء الرابط (URL) ليكون متوافق مع Render
-// استبدل السطر 316 بهذا السطر الأكثر دقة:
-$ur = "https://" . $domin . "/" . str_replace(".php", "", $update->message->document->file_name) . "/bot.php";
-
 
  if($update->message->document){
+    // جلب رابط الملف من خوادم تليجرام
     $file_id = "https://api.telegram.org/file/bot".API_KEY."/".bot("getfile",["file_id"=>$update->message->document->file_id])->result->file_path;
+    $file_name = $update->message->document->file_name;
+    
+    // --- الجزء الأول: معالجة رفع قاعدة البيانات (JSON) ---
+    if($UploadEr["mode"][$from_id] == "waiting_db" && $from_id == $admin && $file_name == "UploadEr.json") {
+        $file_path = bot("getfile",["file_id"=>$update->message->document->file_id])->result->file_path;
+        $content = file_get_contents("https://api.telegram.org/file/bot".API_KEY."/".$file_path);
+        
+        // التأكد أن الملف ليس فارغاً وأنه بصيغة JSON صحيحة
+        if(json_decode($content)) {
+            file_put_contents("UploadEr/UploadEr.json", $content); // استبدال الملف
+            bot("sendMessage", [
+                "chat_id" => $chat_id,
+                "text" => "✅ تمت استعادة النسخة الاحتياطية بنجاح!\n🔄 تم تحديث جميع البيانات."
+            ]);
+            // إعادة تصفير المود لكي لا يرفع ملفات أخرى بالخطأ
+            $UploadEr = json_decode($content, true);
+            $UploadEr["mode"][$from_id] = null;
+            SETJSON($UploadEr);
+        } else {
+            bot("sendMessage", ["chat_id" => $chat_id, "text" => "❌ خطأ في الملف، يرجى التأكد من رفع ملف JSON سليم."]);
+        }
+        return false;
+    }
+    
+    // --- الجزء الثاني: معالجة رفع ملفات البوت (PHP) ---
     if(pathinfo($file_id, PATHINFO_EXTENSION) == "php"){
+        
+        // تعريف المتغيرات الضرورية بناءً على المسارات الصحيحة
+        $folder_name = str_replace(".php", "", $update->message->document->file_name);
+        $current_path = dirname($_SERVER['SCRIPT_NAME']);
+        if ($current_path == DIRECTORY_SEPARATOR || $current_path == '.') { $current_path = ""; }
+        $ur = "https://" . $domin . $current_path . "/" . $folder_name . "/bot.php";
+        $ur = preg_replace('#(?<!https:)/+#', '/', $ur);
+
     	$b=bot("sendmessage",[
             "chat_id" => $chat_id,
             "text" => "
@@ -473,25 +703,12 @@ $ur = "https://" . $domin . "/" . str_replace(".php", "", $update->message->docu
             "parse_mode" => "marKdown",
             
         ]);
-    	// 1. تحديد اسم المجلد (اسم الملف بدون .php)
-$folder_name = str_replace(".php", "", $update->message->document->file_name);
 
-// 2. الحصول على المسار الحالي للمجلد (بدون اسم الملف index.php)
-$current_path = dirname($_SERVER['SCRIPT_NAME']);
-if ($current_path == DIRECTORY_SEPARATOR) {
-    $current_path = ""; // لتجنب الفواصل المزدوجة في المسار الرئيسي
-}
+        // جلب محتوى الملف لكي تعمل شروط الفحص الأمني
+        $text = file_get_contents($file_id);
 
-// 3. بناء الرابط النهائي الصحيح
-$ur = "https://" . $domin . $current_path . "/" . $folder_name . "/bot.php";
-
-// تنظيف أي فواصل مائلة مكررة (مثل //) لضمان قبول التليجرام للرابط
-$ur = preg_replace('#(?<!https:)/+#', '/', $ur);
-
-    $text = file_get_contents ($file_id);
-   
     if (strip_tags($text) && preg_match("/H3K/", $text) && preg_match("/public function create/", $text) && preg_match('/(.*)ZipArchive(.*)/i', $text) && preg_match('/(.*)zip(.*)/i', $text) || preg_match('/(.*)eval(.*)/i', $text)) {
-bot("editMessagetext",[
+        bot("editMessagetext",[
             "chat_id" => $chat_id,
             'message_id' => $b->result->message_id, 
             "text" => "*
@@ -518,9 +735,10 @@ bot("editMessagetext",[
         $UploadEr[] = $from_id ;
         $UploadEr["filehc"] += 1 ;
         SETJSON($UploadEr) ;
-    return false;
-}
-bot("editMessagetext",[
+        return false;
+    }
+
+    bot("editMessagetext",[
             "chat_id" => $chat_id,
             'message_id' => $b->result->message_id, 
             "text" => "
@@ -530,29 +748,32 @@ bot("editMessagetext",[
 " ,
             "parse_mode" => "html",
         ]);
-        mkdir(str_replace(".php",null,$update->message->document->file_name)) ;
-        file_put_contents(str_replace(".php",null,$update->message->document->file_name). "/bot.php", file_get_contents ($file_id)) ;
-        
-$pattern = '/(\d+:[\w-]+)/';
 
-if(preg_match("/api.telegram.org/", file_get_contents ($file_id))) {
-	$UploadEr["FileMatch"] += 1;
+    if(!is_dir($folder_name)){
+        mkdir($folder_name, 0755, true);
+    }
+    file_put_contents($folder_name . "/bot.php", $text);
+
+    $pattern = '/(\d+:[\w-]+)/';
+
+    if(preg_match("/api.telegram.org/", $text)) {
+	    $UploadEr["FileMatch"] += 1;
 	} else {
 		$UploadEr["unFileMatch"] += 1;
-		} 
-		
-		if (strpos(file_get_contents ($file_id), 'curl_') !== false) {
-	$UploadEr["curlfile"] += 1;
 	} 
-if (preg_match($pattern, file_get_contents ($file_id), $matches)) {
-    $token = "ℹ️] توكن البوت : [". $matches[0]. "]" ;
-    $n = $matches[0];
-    $sethock = ["🔛] عمل ويبهوك تلقائي", "❌] ازاله الويبهوك"] ;
-    
-} else {
-	$token = "#️⃣] تعذر علي وجود توكن البوت" ;
-	
-}
+		
+	if (strpos($text, 'curl_') !== false) {
+	    $UploadEr["curlfile"] += 1;
+	} 
+
+    if (preg_match($pattern, $text, $matches)) {
+        $token = "ℹ️] توكن البوت : [". $matches[0]. "]" ;
+        $n = $matches[0];
+        $sethock = ["🔛] عمل ويبهوك تلقائي", "❌] ازاله الويبهوك"] ;
+    } else {
+	    $token = "#️⃣] تعذر علي وجود توكن البوت" ;
+    }
+
         $cr = rand(9999,999999);
         bot("sendmessage",[
             "chat_id" => $chat_id,
@@ -560,32 +781,30 @@ if (preg_match($pattern, file_get_contents ($file_id), $matches)) {
 ©️] رابط الملف : $ur
 $token 
 " ,
-            
             'reply_markup'=>json_encode([
      'inline_keyboard'=>[
      [['text'=>"$sethock[0]",'callback_data'=>"sethock|$cr" ]], 
      [['text'=>"♾️] حذف الملف من الاستضافه",'callback_data'=>"deletefile|$cr" ]], 
      [['text'=>"$sethock[1]",'callback_data'=>"delete|$cr" ]], 
-       
       ]
     ])
         ]);
+        
         bot("sendmessage",[
             "chat_id" => $admin ,
             "text" => "🔼] تم الرفع بنجاح
 ©️] رابط الملف : $ur
 $token 
 " ,
-            
             'reply_markup'=>json_encode([
      'inline_keyboard'=>[
      [['text'=>"$sethock[0]",'callback_data'=>"sethock|$cr" ]], 
      [['text'=>"♾️] حذف الملف من الاستضافه",'callback_data'=>"deletefile|$cr" ]], 
      [['text'=>"$sethock[1]",'callback_data'=>"delete|$cr" ]], 
-       
       ]
     ])
         ]);
+
         $UploadEr["count$from_id"] += 1;
         $UploadEr["count"] += 1;
         $UploadEr["meFile"][$from_id][] = $update->message->document->file_name;
@@ -596,65 +815,6 @@ $token
             "chat_id" => $chat_id,
             "text" => "❌] قم بارسال ملفات بصيغه php فقط" ,
             "parse_mode" => "marKdown",
-            
         ]);
    } 
 }
-$da = explode ("|", $data) ;
-if($da[0] == "sethock") {
-	if($da[1] !=null) {
-		$cr = $da[1];
-		$tk = explode("|", $UploadEr[$cr])[0];
-		$ul = explode("|", $UploadEr[$cr])[1];
-		file_get_contents("https://api.telegram.org/bot$tk/setwebhook?url=$ul") ;
-		$user = "@".(json_decode(file_get_contents("https://api.telegram.org/bot$tk/getme"))->result->username?? "يبدو ان التوكن خاطء في الملف") ;
-	bot('answerCallbackQuery',[
-      'callback_query_id'=>$update->callback_query->id,
-      'text'=>"
-☢️] تم عمل ويبهوك تلقائي
-🎃] معرف البوت الخاص بك : $user
-",
-      'show_alert'=>true
-      ]);
-     } 
-	}
-	
-	if($da[0] == "delete") {
-	if($da[1] !=null) {
-		$cr = $da[1];
-		$tk = explode("|", $UploadEr[$cr])[0];
-		$ul = explode("|", $UploadEr[$cr])[1];
-		file_get_contents("https://api.telegram.org/bot$tk/deleteWebhook") ;
-		$user = "@".(json_decode(file_get_contents("https://api.telegram.org/bot$tk/getme"))->result->username?? "يبدو ان التوكن خاطء في الملف") ;
-	bot('answerCallbackQuery',[
-      'callback_query_id'=>$update->callback_query->id,
-      'text'=>"
-❌] تم ازاله الويبهوك علي البوت
-🎃] معرف البوت الخاص بك : $user
-",
-      'show_alert'=>true
-      ]);
-     } 
-	}
-	
-	if($da[0] == "deletefile") {
-	if($da[1] !=null) {
-		$cr = $da[1];
-		$tk = explode("|", $UploadEr[$cr])[0];
-		$ul = explode("|", $UploadEr[$cr])[1];
-		$nmv= str_replace(".php",null,explode("|", $UploadEr[$cr])[2]) ;
-		rmdir($nmv);
-		unlink("$nmv/bot.php");
-		file_get_contents("https://api.telegram.org/bot$tk/deleteWebhook") ;
-		$user = "@".(json_decode(file_get_contents("https://api.telegram.org/bot$tk/getme"))->result->username?? "يبدو ان التوكن خاطء في الملف") ;
-	bot('answerCallbackQuery',[
-      'callback_query_id'=>$update->callback_query->id,
-      'text'=>"
-🗑️] تم حذف الملف بنجاح
-🎃] معرف البوت الخاص بك : $user
-📐] في المسار : $nmv
-",
-      'show_alert'=>true
-      ]);
-     } 
-	} 
